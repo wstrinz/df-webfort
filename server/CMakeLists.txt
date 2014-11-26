@@ -18,7 +18,10 @@ set(SRC
 )
 # A list of headers
 set(HDRS
-	shared.h
+	webfort.hpp
+	server.hpp
+	renderer_wrap.hpp
+	input.hpp
 )
 set_source_files_properties(${HDRS} PROPERTIES HEADER_FILE_ONLY TRUE)
 

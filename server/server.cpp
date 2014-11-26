@@ -5,13 +5,18 @@
  * Copyright (c) 2014 mifki, ISC license.
  */
 
-#include "shared.h"
-#include <cassert>
+#include "server.hpp"
+
+bool INGAME_TIME = 0;
+int32_t TURNTIME = 600; // 10 minutes
+uint32_t MAX_CLIENTS = 32;
+uint16_t PORT = 1234;
+#define WF_VERSION  "WebFortress-v2.0"
+#define WF_INVALID  "WebFortress-invalid"
 
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
-namespace ws  = websocketpp;
 namespace lib = websocketpp::lib;
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
@@ -21,121 +26,24 @@ typedef ws::server<ws::config::asio> server;
 
 typedef server::message_ptr message_ptr;
 
-using df::global::gps;
+static conn_hdl null_conn = std::weak_ptr<void>();
+static Client* null_client;
 
-bool INGAME_TIME = 0;
-int32_t TURNTIME = 600; // 10 minutes
-uint32_t MAX_CLIENTS = 32;
-uint16_t PORT = 1234;
-#define WF_VERSION  "WebFortress-v2.0"
-#define WF_INVALID  "WebFortress-invalid"
+static conn_hdl active_conn = null_conn;
 
 conn_map clients;
 
-static ws::connection_hdl null_conn = std::weak_ptr<void>();
-static Client* null_client;
+#include <cassert>
+#include "webfort.hpp"
+#include "MemAccess.h"
+#include "modules/World.h"
+#include "df/global_objects.h"
+#include "df/graphic.h"
+using df::global::gps;
 
-static ws::connection_hdl active_conn = null_conn;
-typedef ws::connection_hdl conn_hdl;
-
-static std::owner_less<std::weak_ptr<void>> conn_lt;
-inline bool operator==(const conn_hdl& p, const conn_hdl& q)
-{
-    return (!conn_lt(p, q) && !conn_lt(q, p));
-}
-
-inline bool operator!=(const conn_hdl& p, const conn_hdl& q)
-{
-    return conn_lt(p, q) || conn_lt(q, p);
-}
+#include "input.hpp"
 
 static unsigned char buf[64*1024];
-
-/* FIXME: input handling is long-winded enough to get its own file. */
-#include "SDL_events.h"
-#include "SDL_keysym.h"
-extern "C"
-{
-extern int SDL_PushEvent( SDL::Event* event );
-}
-static SDL::Key mapInputCodeToSDL( const uint32_t code )
-{
-#define MAP(a, b) case a: return b;
-    switch (code)
-    {
-    // {{{ keysyms
-    MAP(96, SDL::K_KP0);
-    MAP(97, SDL::K_KP1);
-    MAP(98, SDL::K_KP2);
-    MAP(99, SDL::K_KP3);
-    MAP(100, SDL::K_KP4);
-    MAP(101, SDL::K_KP5);
-    MAP(102, SDL::K_KP6);
-    MAP(103, SDL::K_KP7);
-    MAP(104, SDL::K_KP8);
-    MAP(105, SDL::K_KP9);
-    MAP(144, SDL::K_NUMLOCK);
-
-    MAP(111, SDL::K_KP_DIVIDE);
-    MAP(106, SDL::K_KP_MULTIPLY);
-    MAP(109, SDL::K_KP_MINUS);
-    MAP(107, SDL::K_KP_PLUS);
-
-    MAP(33, SDL::K_PAGEUP);
-    MAP(34, SDL::K_PAGEDOWN);
-    MAP(35, SDL::K_END);
-    MAP(36, SDL::K_HOME);
-    MAP(46, SDL::K_DELETE);
-
-    MAP(112, SDL::K_F1);
-    MAP(113, SDL::K_F2);
-    MAP(114, SDL::K_F3);
-    MAP(115, SDL::K_F4);
-    MAP(116, SDL::K_F5);
-    MAP(117, SDL::K_F6);
-    MAP(118, SDL::K_F7);
-    MAP(119, SDL::K_F8);
-    MAP(120, SDL::K_F9);
-    MAP(121, SDL::K_F10);
-    MAP(122, SDL::K_F11);
-    MAP(123, SDL::K_F12);
-
-    MAP(37, SDL::K_LEFT);
-    MAP(39, SDL::K_RIGHT);
-    MAP(38, SDL::K_UP);
-    MAP(40, SDL::K_DOWN);
-
-    MAP(188, SDL::K_LESS);
-    MAP(190, SDL::K_GREATER);
-
-    MAP(13, SDL::K_RETURN);
-
-    //MAP(16, SDL::K_LSHIFT);
-    //MAP(17, SDL::K_LCTRL);
-    //MAP(18, SDL::K_LALT);
-
-    MAP(27, SDL::K_ESCAPE);
-#undef MAP
-    // }}}
-    }
-    if (code <= 177)
-        return (SDL::Key)code;
-    return SDL::K_UNKNOWN;
-}
-
-void simkey(int down, int mod, SDL::Key sym, int unicode)
-{
-    SDL::Event event;
-    memset(&event, 0, sizeof(event));
-
-    event.type = down ? SDL::ET_KEYDOWN : SDL::ET_KEYUP;
-    event.key.state = down ? SDL::BTN_PRESSED : SDL::BTN_RELEASED;
-    event.key.ksym.mod = (SDL::Mod)mod;
-    event.key.ksym.sym = sym;
-    event.key.ksym.unicode = unicode;
-
-    SDL_PushEvent(&event);
-}
 
 static std::ostream* out;
 static DFHack::color_ostream* raw_out;
@@ -199,7 +107,7 @@ int32_t round_timer()
 {
     if (INGAME_TIME) {
         // FIXME: check if we are actually in-game
-        return World::ReadCurrentTick(); // uint32_t
+        return DFHack::World::ReadCurrentTick(); // uint32_t
     } else {
         return time(NULL); // time_t, usually int32_t
     }

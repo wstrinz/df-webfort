@@ -5,25 +5,38 @@
  * Created by Vitaly Pronkin on 14/05/14.
  * Copyright (c) 2014 mifki, ISC license.
  */
+#include "webfort.hpp"
 
 #include <stdint.h>
 #include <iostream>
 #include <map>
 #include <vector>
-
-// #undef NDEBUG
 #include <cassert>
-#ifdef WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-#elif defined(__APPLE__)
-#else
-    #include <dlfcn.h>
-#endif
 
 #include "tinythread.h"
 
-#include "shared.h"
+#include "MemAccess.h"
+#include "PluginManager.h"
+#include "modules/MapCache.h"
+#include "modules/Gui.h"
+#include "modules/World.h"
+#include "df/graphic.h"
+#include "df/enabler.h"
+#include "df/renderer.h"
+#include "df/building.h"
+#include "df/buildings_other_id.h"
+#include "df/unit.h"
+#include "df/items_other_id.h"
+#include "df/viewscreen_dwarfmodest.h"
+#include "df/viewscreen_setupadventurest.h"
+#include "df/viewscreen_dungeonmodest.h"
+#include "df/viewscreen_choose_start_sitest.h"
+#include "df/viewscreen_new_regionst.h"
+#include "df/viewscreen_layer_export_play_mapst.h"
+#include "df/viewscreen_overallstatusst.h"
+#include "df/viewscreen_movieplayerst.h"
+
+#include "server.hpp"
 
 static tthread::thread * wsthread;
 
@@ -504,14 +517,7 @@ DFhackCExport command_result plugin_init ( color_ostream &out, vector <PluginCom
 
     has_textfont = get_font_paths();
     has_overrides |= load_overrides();
-    if (has_textfont || has_overrides) {
-        hook();
-    }
-    if (!has_textfont) {
-        out.color(COLOR_YELLOW);
-        out << "Webfort: FONT and GRAPHICS_FONT are the same" << std::endl;
-        out.color(COLOR_RESET);
-    }
+    hook();
 
     wsthread = new tthread::thread(wsthreadmain, &out);
 
