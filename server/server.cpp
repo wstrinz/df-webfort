@@ -179,6 +179,8 @@ std::string status_json()
         << ", \"time_left\": " << time_left
         << ", \"is_somebody_playing\": " << is_somebody_playing
         << ", \"using_ingame_time\": " << INGAME_TIME
+        << ", \"dfhack_version\": " << str(DFHACK_VERSION)
+        << ", \"webfort_version\": " << str(WF_VERSION)
         << " }\n";
 
     return json.str();
@@ -191,7 +193,8 @@ void on_http(server* s, conn_hdl hdl)
     std::string route = con->get_resource();
     if (route == STATUS_ROUTE) {
         con->set_status(websocketpp::http::status_code::ok);
-        con->replace_header("Content-Type", "text/html; charset=utf-8");
+        con->replace_header("Content-Type", "application/json");
+        con->replace_header("Access-Control-Allow-Origin", "*");
         con->set_body(status_json());
     }
 }
