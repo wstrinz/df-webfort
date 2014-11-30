@@ -134,7 +134,7 @@ void set_active(conn_hdl newc)
         ss << " has seized control.";
         show_announcement(ss.str());
     } else {
-        quicksave(raw_out);
+        // quicksave(raw_out); // FIXME: this is way too often
     }
 
     if (!(*df::global::pause_state)) {
@@ -412,6 +412,11 @@ void wsthreadmain(void *i_raw_out)
 
     server srv;
 
+    appbuf abuf(&srv);
+    std::ostream astream(&abuf);
+    out = &astream;
+
+
     char* tmp;
 
     try {
@@ -444,9 +449,6 @@ void wsthreadmain(void *i_raw_out)
         srv.init_asio();
 
         srv.get_alog().set_ostream(&logstream);
-        appbuf abuf(&srv);
-        std::ostream astream(&abuf);
-        out = &astream;
 
         srv.set_socket_init_handler(&on_init);
         srv.set_http_handler(bind(&on_http, &srv, ::_1));
@@ -466,13 +468,21 @@ void wsthreadmain(void *i_raw_out)
         srv.start_accept();
         // Start the ASIO io_service run loop
         *out << "Web Fortress started on port " << PORT << std::endl;
-        srv.run();
     } catch (const std::exception & e) {
         *out << "Webfort failed to start: " << e.what() << std::endl;
     } catch (lib::error_code e) {
         *out << "Webfort failed to start: " << e.message() << std::endl;
     } catch (...) {
         *out << "Webfort failed to start: other exception" << std::endl;
+    }
+    try {
+        srv.run();
+    } catch (const std::exception & e) {
+        *out << "ERROR: std::exception caught: " << e.what() << std::endl;
+    } catch (lib::error_code e) {
+        *out << "ERROR: ws++ exception caught: " << e.message() << std::endl;
+    } catch (...) {
+        *out << "ERROR: Unknown exception caught:" << std::endl;
     }
     return;
 }
