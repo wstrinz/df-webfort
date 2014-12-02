@@ -40,9 +40,6 @@
 
 static tthread::thread * wsthread;
 
-typedef float GLfloat;
-typedef unsigned int GLuint;
-
 using namespace df::enums;
 using df::global::world;
 using std::string;
@@ -55,24 +52,12 @@ using df::global::enabler;
 using df::renderer;
 
 DFHACK_PLUGIN("webfort");
+DFHACK_PLUGIN_IS_ENABLED(enabled);
 
 struct tileref {
     int tilesetidx;
     int tile;
 };
-
-struct override {
-    bool building;
-    bool tiletype;
-    int id, type, subtype;
-    struct tileref newtile;
-};
-
-static bool enabled, texloaded;
-static bool has_textfont, has_overrides;
-static vector< struct override > *overrides[256];
-static struct tileref override_defs[256];
-static df::item_flags bad_item_flags;
 
 // Shared in server.h
 unsigned char sc[256*256*5];
@@ -141,7 +126,7 @@ static bool is_text_tile(int x, int y, bool &is_map)
     is_map = false;
 
     if (!x || !y || x == w - 1 || y == h - 1)
-       return has_textfont;
+       return true;
 
     if (IS_SCREEN(viewscreen_dwarfmodest))
     {
@@ -171,19 +156,16 @@ static bool is_text_tile(int x, int y, bool &is_map)
             {
                 // Make burrow symbols use graphics font
                 if ((y != 12 && y != 13 && !(x == menu_left + 2 && y == 2)) || x == menu_left || x == menu_right)
-                    return has_textfont;
+                    return true;
             }
             else
-                return has_textfont;
+                return true;
         }
 
         is_map = (x > 0 && x < menu_left);
 
         return false;
     }
-
-    if (!has_textfont)
-        return false;
 
     if (IS_SCREEN(viewscreen_dungeonmodest))
     {
@@ -322,32 +304,21 @@ void unhook()
     delete enabler->renderer;
 }
 
-DFhackCExport command_result plugin_init ( color_ostream &out, vector <PluginCommand> &commands)
+DFhackCExport command_result plugin_enable(color_ostream &out, bool to_enable)
+{
+    return CR_OK;
+}
+
+DFhackCExport command_result plugin_init(color_ostream &out, vector <PluginCommand> &commands)
 {
     auto dflags = init->display.flag;
     if (dflags.is_set(init_display_flags::TEXT)) {
         out.color(COLOR_RED);
-        out << "Webfort: PRINT_MODE must not be TEXT" << std::endl;
-        out << "Webfort: Aborting." << std::endl;
+        out << "Error: For Webfort, PRINT_MODE must not be TEXT" << std::endl;
         out.color(COLOR_RESET);
         return CR_OK;
     }
 
-    bad_item_flags.whole = 0;
-    bad_item_flags.bits.in_building = true;
-    bad_item_flags.bits.garbage_collect = true;
-    bad_item_flags.bits.removed = true;
-    bad_item_flags.bits.dead_dwarf = true;
-    bad_item_flags.bits.murder = true;
-    bad_item_flags.bits.construction = true;
-    bad_item_flags.bits.in_inventory = true;
-    bad_item_flags.bits.in_chest = true;
-
-    //Main tileset
-    memset(override_defs, 0, sizeof(struct tileref)*256);
-
-    has_textfont = true;
-    has_overrides |= false;
     hook();
 
     wsthread = new tthread::thread(wsthreadmain, &out);
@@ -355,7 +326,7 @@ DFhackCExport command_result plugin_init ( color_ostream &out, vector <PluginCom
     return CR_OK;
 }
 
-DFhackCExport command_result plugin_shutdown ( color_ostream &out )
+DFhackCExport command_result plugin_shutdown(color_ostream &out)
 {
     if (enabled)
         unhook();
