@@ -1,0 +1,10 @@
+The port the server will listen on. Don't forget to forward your ports.
+[PORT:1234]
+
+The amount of time each turn lasts. if INGAME_TIMER is yes, this is in ingame
+ticks, if no, then this is in IRL seconds.
+[INGAME_TIMER:NO]
+[TURNTIME:600]
+
+The max number of concurrent connections that the server will accept.
+[MAX_CLIENTS:32]
