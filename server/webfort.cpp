@@ -314,7 +314,7 @@ DFhackCExport command_result plugin_init(color_ostream &out, vector <PluginComma
     auto dflags = init->display.flag;
     if (dflags.is_set(init_display_flags::TEXT)) {
         out.color(COLOR_RED);
-        out << "Error: For Webfort, PRINT_MODE must not be TEXT" << std::endl;
+        out << "Error: For Webfort, PRINT_MODE needs to not be TEXT" << std::endl;
         out.color(COLOR_RESET);
         return CR_OK;
     }

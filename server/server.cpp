@@ -7,7 +7,6 @@
 
 #include "server.hpp"
 
-#include "config.hpp"
 
 #define WF_VERSION  "WebFortress-v2.0"
 #define WF_INVALID  "WebFortress-invalid"
@@ -32,6 +31,7 @@ static conn_hdl active_conn = null_conn;
 conn_map clients;
 
 #include <cassert>
+#include "config.hpp"
 #include "webfort.hpp"
 #include "MemAccess.h"
 #include "Console.h"
