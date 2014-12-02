@@ -15,11 +15,13 @@ endif()
 set(SRC
 	webfort.cpp
 	server.cpp
+	config.cpp
 )
 # A list of headers
 set(HDRS
 	webfort.hpp
 	server.hpp
+	config.hpp
 	renderer_wrap.hpp
 	input.hpp
 )
@@ -89,6 +91,7 @@ include_directories(websocketpp)
 
 if (isPlugin)
 	DFHACK_PLUGIN(webfort ${SRC} LINK_LIBRARIES dfhack-tinythread ${PROJECT_LIBS})
+	INSTALL(DIRECTORY ../dist/shared/ DESTINATION .)
 else()
 	if (NOT UNIX)
 		message(FATAL_ERROR "Building webfort out-of-tree not supported on windows.")

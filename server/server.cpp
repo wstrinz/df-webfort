@@ -7,10 +7,8 @@
 
 #include "server.hpp"
 
-bool INGAME_TIME = 0;
-int32_t TURNTIME = 600; // 10 minutes
-uint32_t MAX_CLIENTS = 32;
-uint16_t PORT = 1234;
+#include "config.hpp"
+
 #define WF_VERSION  "WebFortress-v2.0"
 #define WF_INVALID  "WebFortress-invalid"
 
@@ -36,6 +34,7 @@ conn_map clients;
 #include <cassert>
 #include "webfort.hpp"
 #include "MemAccess.h"
+#include "Console.h"
 #include "modules/World.h"
 #include "df/global_objects.h"
 #include "df/graphic.h"
@@ -67,10 +66,18 @@ public:
             o.replace(i, 13, "[WEBFORT]");
         }
 
+        // color warnings and errors
+        if (o.find("ERROR") != std::string::npos) {
+            dfout->color(DFHack::COLOR_RED);
+        } else if (o.find("WARN") != std::string::npos) {
+            dfout->color(DFHack::COLOR_YELLOW);
+        }
+
         *dfout << o;
         std::cout << o;
 
         dfout->flush();
+        dfout->color(DFHack::COLOR_RESET);
         std::cout.flush();
         str("");
         return 0;
@@ -112,7 +119,6 @@ int32_t round_timer()
         return time(NULL); // time_t, usually int32_t
     }
 }
-
 
 void set_active(conn_hdl newc)
 {
@@ -330,7 +336,6 @@ void tock(server* s, conn_hdl hdl)
     s->send(hdl, (const void*) buf, (size_t)(b-buf), ws::frame::opcode::binary);
 }
 
-
 void on_message(server* s, conn_hdl hdl, message_ptr msg)
 {
     auto str = msg->get_payload();
@@ -406,6 +411,8 @@ void wsthreadmain(void *i_raw_out)
     null_client = new Client;
     null_client->nick = "__NOBODY";
 
+    load_config();
+
     raw_out = (DFHack::color_ostream*) i_raw_out;
     logbuf lb((DFHack::color_ostream*) i_raw_out);
     std::ostream logstream(&lb);
@@ -416,24 +423,7 @@ void wsthreadmain(void *i_raw_out)
     std::ostream astream(&abuf);
     out = &astream;
 
-
-    char* tmp;
-
     try {
-        // FIXME: bounds checking.
-        if ((tmp = getenv("WF_PORT"))) {
-            PORT = (uint16_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_TURNTIME"))) {
-            TURNTIME = (int64_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_MAX_CLIENTS"))) {
-            MAX_CLIENTS = (uint32_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_INGAME_TIME"))) {
-            INGAME_TIME = std::stol(tmp) != 0;
-        }
-
         srv.clear_access_channels(ws::log::alevel::all);
         srv.set_access_channels(
                 ws::log::alevel::connect    |
@@ -460,13 +450,12 @@ void wsthreadmain(void *i_raw_out)
         lib::error_code ec;
         srv.listen(PORT, ec);
         if (ec) {
-            *out << "Unable to start Webfort on port " << PORT
+            *out << "ERROR: Unable to start Webfort on port " << PORT
                   << ", is it being used somehere else?" << std::endl;
             return;
         }
 
         srv.start_accept();
-        // Start the ASIO io_service run loop
         *out << "Web Fortress started on port " << PORT << std::endl;
     } catch (const std::exception & e) {
         *out << "Webfort failed to start: " << e.what() << std::endl;
@@ -475,6 +464,7 @@ void wsthreadmain(void *i_raw_out)
     } catch (...) {
         *out << "Webfort failed to start: other exception" << std::endl;
     }
+
     try {
         srv.run();
     } catch (const std::exception & e) {
