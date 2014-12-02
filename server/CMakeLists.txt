@@ -53,6 +53,7 @@ else(UNIX)
 		-D_WEBSOCKETPP_CPP11_RANDOM_DEVICE_
 		-D_WEBSOCKETPP_CPP11_MEMORY_
 		-DNOMINMAX
+		-DWIN32_LEAN_AND_MEAN
 	)
 	option(DL_DEPS "Download dependencies as windows binaries over https." ON)
 	# Download deps

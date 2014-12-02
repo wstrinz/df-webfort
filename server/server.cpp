@@ -7,10 +7,10 @@
 
 #include "server.hpp"
 
-
 #define WF_VERSION  "WebFortress-v2.0"
 #define WF_INVALID  "WebFortress-invalid"
 
+#include <cassert>
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
@@ -30,17 +30,16 @@ static conn_hdl active_conn = null_conn;
 
 conn_map clients;
 
-#include <cassert>
 #include "config.hpp"
 #include "webfort.hpp"
+#include "input.hpp"
+
 #include "MemAccess.h"
 #include "Console.h"
 #include "modules/World.h"
 #include "df/global_objects.h"
 #include "df/graphic.h"
 using df::global::gps;
-
-#include "input.hpp"
 
 static unsigned char buf[64*1024];
 

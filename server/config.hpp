@@ -1,7 +1,7 @@
 #ifndef __WF_CONFIG_HPP__
 #define __WF_CONFIG_HPP__
 
-#include <stdint.h>
+#include <cstdint>
 
 extern bool INGAME_TIME;
 extern int32_t TURNTIME;

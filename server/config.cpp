@@ -7,6 +7,7 @@ uint16_t PORT = 1234;
 
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <vector>
 using namespace std; // iostream heavy
 
