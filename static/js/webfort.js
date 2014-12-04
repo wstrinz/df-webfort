@@ -39,6 +39,17 @@ var wsUri = 'ws://' + host + ':' + port + '/' + encodeURIComponent(nick);
 var active = false;
 var lastFrame = 0;
 
+var tilewh = 16; // TODO: remove vars
+var tilew  = 16;
+var tileh  = 16;
+
+var cmd = {
+	"update":  110,
+	"sendKey": 111, 
+	"connect": 115,
+	"requestTurn": 116
+};
+
 // Converts integer value in seconds to a time string, HH:MM:SS
 function toTime(n) {
 	var h = Math.floor(n / 60  / 60);
@@ -51,10 +62,7 @@ function toTime(n) {
 
 function plural(n, unit)
 {
-	if (n === 1) {
-		return n + " " + unit;
-	}
-	return n + " " + unit + "s";
+	return n + " " + unit + (n === 1 ? "" : "s");
 }
 
 // Converts an integer value in ticks to the dwarven calendar
@@ -114,9 +122,9 @@ function connect() {
 function onOpen(evt) {
 	setStatus('Connected', 'orange');
 
-	websocket.send(new Uint8Array([115]));
+	websocket.send(new Uint8Array([cmd.connect]));
 
-	websocket.send(new Uint8Array([110]));
+	websocket.send(new Uint8Array([cmd.requestTurn]));
 	websocket.onmessage = onMessage;
 }
 
@@ -140,7 +148,7 @@ function onError(ev) {
 }
 
 function requestTurn() {
-	websocket.send(new Uint8Array([116]));
+	websocket.send(new Uint8Array([cmd.requestTurn]));
 }
 
 function renderQueueStatus(s) {
@@ -164,25 +172,32 @@ function renderUpdate(ctx, data, offset) {
 	var s;
 	var bg;
 	var fg;
+	var tilew2 = tilew * tilew;
+	var tileh2 = tileh * tileh;
+
 	for (k = offset; k < data.length; k += 5) {
 		x = data[k + 0];
 		y = data[k + 1];
 
 		s = data[k + 2];
-		bg = data[k + 3] % 16;
+		bg = data[k + 3] % tilew;
 		fg = data[k + 4];
 
-		var bg_x = ((bg % 4) * 256) + 15 * 16;
-		var bg_y = (Math.floor(bg / 4) * 256) + 15 * 16;
-		ctx.drawImage(cd, bg_x, bg_y, 16, 16, x * 16, y * 16, 16, 16);
+		var bg_x = ((bg % 4) * tilew2) + 15 * tilew;
+		var bg_y = (Math.floor(bg / 4) * tileh2) + 15 * tileh;
+		ctx.drawImage(cd,
+				bg_x, bg_y, tilew, tileh,
+				x * tilew, y * tileh, tilew, tileh);
 
 		if (data[k + 3] & 64) {
 			t.push(k);
 			continue;
 		}
-		var fg_x = (s % 16) * 16 + ((fg % 4) * 256);
-		var fg_y = Math.floor(s / 16) * 16 + (Math.floor(fg / 4) * 256);
-		ctx.drawImage(cd, fg_x, fg_y, 16, 16, x * 16, y * 16, 16, 16);
+		var fg_x = (s % 16) * tilew + ((fg % 4) * tilew2);
+		var fg_y = Math.floor(s / 16) * tileh + (Math.floor(fg / 4) * tileh2);
+		ctx.drawImage(cd,
+				fg_x, fg_y, tilew, tileh,
+				x * tilew, y * tileh, tilew, tileh);
 	}
 
 	for (var m = 0; m < t.length; m++) {
@@ -194,9 +209,11 @@ function renderUpdate(ctx, data, offset) {
 		bg = data[k + 3];
 		fg = data[k + 4];
 
-		var i = (s % 16) * 16 + ((fg % 4) * 256);
-		var j = Math.floor(s / 16) * 16 + (Math.floor(fg / 4) * 256);
-		ctx.drawImage(ct, i, j, 16, 16, x * 16, y * 16, 16, 16);
+		var i = (s % 16) * tilew + ((fg % 4) * tilew2);
+		var j = Math.floor(s / 16) * tileh + (Math.floor(fg / 4) * tileh2);
+		ctx.drawImage(ct,
+				i, j, tilew, tileh,
+				x * tilew, y * tileh, tilew, tileh);
 	}
 }
 
@@ -204,7 +221,7 @@ function onMessage(evt) {
 	var data = new Uint8Array(evt.data);
 
 	var ctx = canvas.getContext('2d');
-	if (data[0] === 110) {
+	if (data[0] === cmd.update) {
 		if (stats) { stats.begin(); }
 		var gameStatus = {};
 		gameStatus.playerCount = data[1] & 127;
@@ -212,7 +229,7 @@ function onMessage(evt) {
 		gameStatus.isActive   = (data[2] & 1) !== 0;
 		gameStatus.isNoPlayer = (data[2] & 2) !== 0;
 		gameStatus.ingameTime = (data[2] & 4) !== 0;
-		console.log(gameStatus);
+		// console.log(gameStatus);
 
 		gameStatus.timeLeft =
 			(data[3]<<0) |
@@ -221,8 +238,8 @@ function onMessage(evt) {
 			(data[6]<<24);
 
 		// FIXME: we shouldn't need resize data
-		var neww = data[7] * 16;
-		var newh = data[8] * 16;
+		var neww = data[7] * tilew;
+		var newh = data[8] * tileh;
 
 		var nickSize = data[9];
 		// this only works because we know the input is uri-encoded ascii
@@ -238,10 +255,10 @@ function onMessage(evt) {
 		var now = performance.now();
 		var nextFrame = (1000 / MAX_FPS) - (now - lastFrame);
 		if (nextFrame < 4) {
-			websocket.send(new Uint8Array([110]));
+			websocket.send(new Uint8Array([cmd.update]));
 		} else {
 			setTimeout(function() {
-				websocket.send(new Uint8Array([110]));
+				websocket.send(new Uint8Array([cmd.update]));
 			}, nextFrame);
 		}
 		lastFrame = performance.now();
@@ -249,6 +266,7 @@ function onMessage(evt) {
 	}
 }
 
+// FIXME: tilewh-ify
 function colorize(img, cnv) {
 	var ctx3 = cnv.getContext('2d');
 
@@ -278,14 +296,16 @@ function colorize(img, cnv) {
 	}
 }
 
-var loading = 0;
-function make_loader() {
-	loading += 1;
+var make_loader = function() {
+	var loading = 0;
 	return function() {
-		loading -= 1;
-		init();
+		loading += 1;
+		return function() {
+			loading -= 1;
+			init();
+		};
 	};
-}
+}();
 
 var cd, ct;
 function init() {
@@ -358,7 +378,7 @@ document.onkeydown = function(ev) {
 
 	if (ev.keyCode < 65) {
 		var mod = (ev.shiftKey << 1) | (ev.ctrlKey << 2) | ev.altKey;
-		var data = new Uint8Array([111, ev.keyCode, 0, mod]);
+		var data = new Uint8Array([cmd.sendKey, ev.keyCode, 0, mod]);
 		logKeyCode(ev);
 		websocket.send(data);
 		ev.preventDefault();
@@ -372,26 +392,40 @@ document.onkeypress = function(ev) {
 		return;
 
 	var mod = (ev.shiftKey << 1) | (ev.ctrlKey << 2) | ev.altKey;
-	var data = new Uint8Array([111, 0, ev.charCode, mod]);
+	var data = new Uint8Array([cmd.sendKey, 0, ev.charCode, mod]);
 	logCharCode(ev);
 	websocket.send(data);
 
+	if (ev.stopPropagation) {
+		ev.stopPropagation();
+	} else if (window.event) {
+		window.event.cancelBubble = true;
+	}
 	ev.preventDefault();
 };
 
 
+var lastTaller = null;
 function fitCanvasToParent() {
 	var maxw = canvas.parentNode.offsetWidth;
 	var maxh = canvas.parentNode.offsetHeight;
 	var aspectRatio = canvas.width / canvas.height;
+	var isTaller = (maxw / maxh < aspectRatio);
 
-	if (maxw / maxh < aspectRatio) {
-		canvas.style.width  = maxw + 'px';
+	if (lastTaller === isTaller) {
+		return;
+	}
+	console("new isTaller: " + isTaller);
+
+	if (isTaller) {
+		canvas.style.width  = "100%";
 		canvas.style.height = "";
 	} else {
 		canvas.style.width  = "";
-		canvas.style.height = maxh + 'px';
+		canvas.style.height = "100%";
 	}
+
+	lastTaller = isTaller;
 }
 
 window.onresize = fitCanvasToParent;
