@@ -4,12 +4,14 @@
  */
 
 /* 
- * Reads query string of current URL, and puts the key-value pairs into result.
+ * Reads query string of current URL, and puts the key-value pairs into a js
+ * object.
  * Special cases:
  *	* empty values are assumed to be true.
  *	* keys with dashes get converted to underscores.
  */
-function getJsonFromUrl(result) {
+function getJsonFromUrl() {
+	var result = {}
 	var query = location.search.substr(1);
 	query.split("&").forEach(function(part) {
 		var item = part.split("=");
@@ -48,6 +50,19 @@ function getUrlFromJson(obj) {
 	return obj;
 }
 
+function merge( /* & arguments */ ) {
+	var result = {};
+	for (var i = 0; i < arguments.length; i++) {
+		var obj = arguments[i];
+		for (var key in obj) {
+			if (obj[key] !== undefined) {
+				result[key] = obj[key];
+			}
+		}
+	}
+	return result;
+}
+
 getParams = (function() {
 	var params = null;
 	return function() {
@@ -55,11 +70,14 @@ getParams = (function() {
 			return params;
 		}
 		var stored = localStorage.getItem("settings");
-		params = {};
+		var params_stored = {};
 		if (stored) {
-			params = JSON.parse(stored);
+			params_stored = JSON.parse(stored);
 		}
-		params = getJsonFromUrl(params);
+		var params_url = getJsonFromUrl();
+
+		params = merge(config, params_stored, params_url);
+		console.log(params);
 
 		if (params.store) {
 			delete params.store;

@@ -28,12 +28,12 @@ var colors = [
 
 var MAX_FPS = 20;
 
-var host = params.host || document.location.hostname;
-var port = params.port || '1234';
-var tileSet = params.tiles || "Spacefox_16x16.png";
-var textSet = params.text  || "ShizzleClean.png";
-var colorscheme = params.colors || undefined;
-var nick = params.nick || "";
+var host = params.host;
+var port = params.port;
+var tileSet = params.tiles;
+var textSet = params.text;
+var colorscheme = params.colors;
+var nick = params.nick;
 
 var wsUri = 'ws://' + host + ':' + port + '/' + encodeURIComponent(nick);
 var active = false;
@@ -45,7 +45,7 @@ var tileh  = 16;
 
 var cmd = {
 	"update":  110,
-	"sendKey": 111, 
+	"sendKey": 111,
 	"connect": 115,
 	"requestTurn": 116
 };
@@ -83,7 +83,7 @@ function toGameTime(n) {
 	} else {
 		times.push(plural(ticks, "tick"));
 	}
-	
+
 	return times.join(", ");
 }
 
@@ -120,11 +120,11 @@ function connect() {
 }
 
 function onOpen(evt) {
-	setStatus('Connected', 'orange');
+	setStatus('Connected, initializing...', 'orange');
 
 	websocket.send(new Uint8Array([cmd.connect]));
 
-	websocket.send(new Uint8Array([cmd.requestTurn]));
+	websocket.send(new Uint8Array([cmd.update]));
 	websocket.onmessage = onMessage;
 }
 
@@ -164,6 +164,7 @@ function renderQueueStatus(s) {
 	setStats(s.playerCount, s.ingameTime, s.timeLeft);
 }
 
+// TODO: document, split
 function renderUpdate(ctx, data, offset) {
 	var t = [];
 	var k;
@@ -229,7 +230,6 @@ function onMessage(evt) {
 		gameStatus.isActive   = (data[2] & 1) !== 0;
 		gameStatus.isNoPlayer = (data[2] & 2) !== 0;
 		gameStatus.ingameTime = (data[2] & 4) !== 0;
-		// console.log(gameStatus);
 
 		gameStatus.timeLeft =
 			(data[3]<<0) |
@@ -296,22 +296,22 @@ function colorize(img, cnv) {
 	}
 }
 
+// Crazy closures, Batman, what's going on here?
 var make_loader = function() {
 	var loading = 0;
 	return function() {
 		loading += 1;
 		return function() {
 			loading -= 1;
-			init();
+			if (loading <= 0) {
+				init();
+			}
 		};
 	};
 }();
 
 var cd, ct;
 function init() {
-	if (loading > 0)
-		return;
-
 	document.body.style.backgroundColor =
 		'rgb(' + colors[0] + ',' + colors[1] + ',' + colors[2] + ')';
 
@@ -405,19 +405,19 @@ document.onkeypress = function(ev) {
 };
 
 
-var lastTaller = null;
+var lastConstraint = null;
 function fitCanvasToParent() {
 	var maxw = canvas.parentNode.offsetWidth;
 	var maxh = canvas.parentNode.offsetHeight;
 	var aspectRatio = canvas.width / canvas.height;
-	var isTaller = (maxw / maxh < aspectRatio);
+	var constrainWidth = (maxw / maxh < aspectRatio);
 
-	if (lastTaller === isTaller) {
+	if (lastConstraint === constrainWidth) {
 		return;
 	}
-	console("new isTaller: " + isTaller);
+	console.log("new constrainWidth: " + constrainWidth);
 
-	if (isTaller) {
+	if (constrainWidth) {
 		canvas.style.width  = "100%";
 		canvas.style.height = "";
 	} else {
@@ -425,7 +425,7 @@ function fitCanvasToParent() {
 		canvas.style.height = "100%";
 	}
 
-	lastTaller = isTaller;
+	lastConstraint = constrainWidth;
 }
 
 window.onresize = fitCanvasToParent;
