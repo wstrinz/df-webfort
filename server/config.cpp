@@ -1,6 +1,7 @@
 #include "config.hpp"
 
 bool INGAME_TIME = 0;
+bool AUTOSAVE_WHILE_IDLE = 0;
 int32_t TURNTIME = 600; // 10 minutes
 uint32_t MAX_CLIENTS = 32;
 uint16_t PORT = 1234;
@@ -59,6 +60,9 @@ bool load_text_file()
 		if (key == "INGAME_TIME") {
 			INGAME_TIME = val == "YES";
 		}
+		if (key == "AUTOSAVE_WHILE_IDLE") {
+			AUTOSAVE_WHILE_IDLE = val == "YES";
+		}
 	}
 	return true;
 }
@@ -77,6 +81,9 @@ bool load_env_vars()
 	}
 	if ((tmp = getenv("WF_INGAME_TIME"))) {
 		INGAME_TIME = std::stol(tmp) != 0;
+	}
+	if ((tmp = getenv("WF_AUTOSAVE"))) {
+		AUTOSAVE_WHILE_IDLE = std::stol(tmp) != 0;
 	}
 	return true;
 }

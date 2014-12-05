@@ -10,3 +10,6 @@ ticks, if 'NO', then this is in IRL seconds.
 
 The max number of concurrent connections that the server will accept.
 [MAX_CLIENTS:32]
+
+Enable autosave while nobody is playing. You probably shouldn't use this yet.
+[AUTOSAVE_WHILE_IDLE:NO]

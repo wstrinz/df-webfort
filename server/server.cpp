@@ -138,8 +138,8 @@ void set_active(conn_hdl newc)
         }
         ss << " has seized control.";
         show_announcement(ss.str());
-    } else {
-        // quicksave(raw_out); // FIXME: this is way too often
+    } else if (AUTOSAVE_WHILE_IDLE) {
+        quicksave(raw_out); // FIXME: this is way too often
     }
 
     if (!(*df::global::pause_state)) {

@@ -4,6 +4,7 @@
 #include <cstdint>
 
 extern bool INGAME_TIME;
+extern bool AUTOSAVE_WHILE_IDLE;
 extern int32_t TURNTIME;
 extern uint32_t MAX_CLIENTS;
 extern uint16_t PORT;
