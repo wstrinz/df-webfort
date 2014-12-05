@@ -5,6 +5,7 @@ bool AUTOSAVE_WHILE_IDLE = 0;
 int32_t TURNTIME = 600; // 10 minutes
 uint32_t MAX_CLIENTS = 32;
 uint16_t PORT = 1234;
+std::string SECRET = ""; // auth is disabled by default
 
 #include <iostream>
 #include <fstream>
@@ -12,7 +13,7 @@ uint16_t PORT = 1234;
 #include <vector>
 using namespace std; // iostream heavy
 
-vector<string> split(const char *str, char c = ' ')
+vector<string> split(const char *str, char c)
 {
     vector<string> result;
     do {
@@ -63,6 +64,9 @@ bool load_text_file()
 		if (key == "AUTOSAVE_WHILE_IDLE") {
 			AUTOSAVE_WHILE_IDLE = val == "YES";
 		}
+		if (key == "SECRET") {
+			SECRET = val;
+		}
 	}
 	return true;
 }
@@ -84,6 +88,9 @@ bool load_env_vars()
 	}
 	if ((tmp = getenv("WF_AUTOSAVE"))) {
 		AUTOSAVE_WHILE_IDLE = std::stol(tmp) != 0;
+	}
+	if ((tmp = getenv("WF_SECRET"))) {
+		SECRET = tmp;
 	}
 	return true;
 }

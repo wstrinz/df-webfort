@@ -18,6 +18,7 @@ typedef struct {
     std::string nick;
     unsigned char mod[256*256];
     time_t atime;
+	bool is_admin;
 } Client;
 
 namespace ws = websocketpp;

@@ -7,8 +7,8 @@
 
 #include "server.hpp"
 
-#define WF_VERSION  "WebFortress-v2.0"
-#define WF_INVALID  "WebFortress-invalid"
+#define WF_VERSION "WebFortress-v2.0"
+#define WF_INVALID "WebFortress-invalid"
 
 #include <cassert>
 #include <websocketpp/config/asio_no_tls.hpp>
@@ -231,7 +231,9 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     auto raw_conn = s->get_con_from_hdl(hdl);
-    std::string nick = raw_conn->get_resource().substr(1); // remove leading '/'
+	auto path = split(raw_conn->get_resource().substr(1).c_str(), '/');
+    std::string nick = path[0];
+	std::string user_secret = (path.size() > 1) ? path[1] : "";
 
     if (nick == "__NOBODY") {
         s->close(hdl, 4002, "Invalid nickname.");
@@ -239,6 +241,8 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     Client* cl = new Client;
+	cl->is_admin = (user_secret == SECRET);
+
     cl->addr = raw_conn->get_remote_endpoint();
     cl->nick = nick;
     cl->atime = round_timer();
@@ -349,8 +353,11 @@ void on_message(server* s, conn_hdl hdl, message_ptr msg)
         }
     } else if (mdata[0] == 111 && msz == 4) { // KeyEvent
         if (hdl == active_conn) {
+			Client* cl = get_client(hdl);
             SDL::Key k = mdata[2] ? (SDL::Key)mdata[2] : mapInputCodeToSDL(mdata[1]);
-            bool is_safe_key = (k != SDL::K_ESCAPE || is_safe_to_escape());
+            bool is_safe_key = cl->is_admin ||
+				k != SDL::K_ESCAPE ||
+				is_safe_to_escape();
             if (k != SDL::K_UNKNOWN && is_safe_key) {
                 int jsmods = mdata[3];
                 int sdlmods = 0;

@@ -14,7 +14,8 @@ var config = {
 	tiles: "Spacefox_16x16.png",
 	text: "ShizzleClean.png",
 	nick: "",
+	secret: "",
 	colors: undefined,
-	hide-chat: undefined,
-	show-fps: undefined
+	hide_chat: undefined,
+	show_fps: undefined
 };

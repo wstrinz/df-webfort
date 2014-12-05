@@ -34,8 +34,12 @@ var tileSet = params.tiles;
 var textSet = params.text;
 var colorscheme = params.colors;
 var nick = params.nick;
+var secret = params.secret;
 
-var wsUri = 'ws://' + host + ':' + port + '/' + encodeURIComponent(nick);
+var wsUri = 'ws://' + host + ':' + port +
+	'/' + encodeURIComponent(nick) +
+	'/' + encodeURIComponent(secret);
+console.log(wsUri);
 var active = false;
 var lastFrame = 0;
 
