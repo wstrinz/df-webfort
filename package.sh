@@ -3,7 +3,7 @@
 # This file is a part of Web Fortress
 # (c) 2014 Kyle Mclamb <alloyed@tfwno.gf>
 
-DF_VER="40.16"
+DF_VER="40.19"
 
 if [ ! -r "$1" ]; then
 	echo "Invalid file: $1"

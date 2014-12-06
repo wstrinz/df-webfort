@@ -28,6 +28,10 @@ static Client* null_client;
 
 static conn_hdl active_conn = null_conn;
 
+static std::ostream* out;
+static std::ostream* logstream;
+static DFHack::color_ostream* raw_out;
+
 conn_map clients;
 
 #include "config.hpp"
@@ -41,10 +45,6 @@ conn_map clients;
 #include "df/graphic.h"
 using df::global::gps;
 
-static unsigned char buf[64*1024];
-
-static std::ostream* out;
-static DFHack::color_ostream* raw_out;
 
 class logbuf : public std::stringbuf {
 public:
@@ -65,15 +65,8 @@ public:
             o.replace(i, 13, "[WEBFORT]");
         }
 
-        // color warnings and errors
-        if (o.find("ERROR") != std::string::npos) {
-            dfout->color(DFHack::COLOR_RED);
-        } else if (o.find("WARN") != std::string::npos) {
-            dfout->color(DFHack::COLOR_YELLOW);
-        }
-
-        *dfout << o;
         std::cout << o;
+        *dfout << o;
 
         dfout->flush();
         dfout->color(DFHack::COLOR_RESET);
@@ -99,6 +92,25 @@ public:
 private:
     server* srv;
 };
+
+class logstream_t : public std::ostream {
+public:
+    logstream_t(DFHack::color_ostream* i_out)
+        : std::ostream(&m_lb), m_lb(i_out)
+    {}
+private:
+    logbuf m_lb;
+};
+
+class appstream : public std::ostream {
+public:
+    appstream(server* i_srv)
+        : std::ostream(&m_ab),  m_ab(i_srv)
+    {}
+private:
+    appbuf m_ab;
+};
+
 
 Client* get_client(conn_hdl hdl)
 {
@@ -231,9 +243,9 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     auto raw_conn = s->get_con_from_hdl(hdl);
-	auto path = split(raw_conn->get_resource().substr(1).c_str(), '/');
+    auto path = split(raw_conn->get_resource().substr(1).c_str(), '/');
     std::string nick = path[0];
-	std::string user_secret = (path.size() > 1) ? path[1] : "";
+    std::string user_secret = (path.size() > 1) ? path[1] : "";
 
     if (nick == "__NOBODY") {
         s->close(hdl, 4002, "Invalid nickname.");
@@ -241,7 +253,7 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     Client* cl = new Client;
-	cl->is_admin = (user_secret == SECRET);
+    cl->is_admin = (user_secret == SECRET);
 
     cl->addr = raw_conn->get_remote_endpoint();
     cl->nick = nick;
@@ -265,6 +277,7 @@ void on_close(server* s, conn_hdl c)
     clients.erase(c);
 }
 
+static unsigned char buf[64*1024];
 void tock(server* s, conn_hdl hdl)
 {
     Client* cl = get_client(hdl);
@@ -353,11 +366,11 @@ void on_message(server* s, conn_hdl hdl, message_ptr msg)
         }
     } else if (mdata[0] == 111 && msz == 4) { // KeyEvent
         if (hdl == active_conn) {
-			Client* cl = get_client(hdl);
+            Client* cl = get_client(hdl);
             SDL::Key k = mdata[2] ? (SDL::Key)mdata[2] : mapInputCodeToSDL(mdata[1]);
             bool is_safe_key = cl->is_admin ||
-				k != SDL::K_ESCAPE ||
-				is_safe_to_escape();
+                k != SDL::K_ESCAPE ||
+                is_safe_to_escape();
             if (k != SDL::K_UNKNOWN && is_safe_key) {
                 int jsmods = mdata[3];
                 int sdlmods = 0;
@@ -412,23 +425,49 @@ void on_init(conn_hdl hdl, boost::asio::ip::tcp::socket & s)
     s.set_option(boost::asio::ip::tcp::no_delay(true));
 }
 
-void wsthreadmain(void *i_raw_out)
+void wsloop(void *a_srv)
+{
+    try {
+        ((server*)a_srv)->run();
+    } catch (const std::exception & e) {
+        *out << "ERROR: std::exception caught: " << e.what() << std::endl;
+    } catch (lib::error_code e) {
+        *out << "ERROR: ws++ exception caught: " << e.message() << std::endl;
+    } catch (...) {
+        *out << "ERROR: Unknown exception caught:" << std::endl;
+    }
+    return;
+}
+
+struct WFServerImpl {
+    tthread::thread* loop;
+    server srv;
+    WFServerImpl(DFHack::color_ostream&);
+    ~WFServerImpl();
+    void start();
+    void stop();
+};
+
+WFServerImpl::WFServerImpl(DFHack::color_ostream& i_raw_out)
 {
     null_client = new Client;
     null_client->nick = "__NOBODY";
 
+    raw_out = &i_raw_out;
+    logstream = new logstream_t(raw_out);
+    out = new appstream(&srv);
+}
+
+WFServerImpl::~WFServerImpl()
+{
+    delete null_client;
+    delete logstream;
+    delete out;
+}
+
+void WFServerImpl::start()
+{
     load_config();
-
-    raw_out = (DFHack::color_ostream*) i_raw_out;
-    logbuf lb((DFHack::color_ostream*) i_raw_out);
-    std::ostream logstream(&lb);
-
-    server srv;
-
-    appbuf abuf(&srv);
-    std::ostream astream(&abuf);
-    out = &astream;
-
     try {
         srv.clear_access_channels(ws::log::alevel::all);
         srv.set_access_channels(
@@ -444,7 +483,7 @@ void wsthreadmain(void *i_raw_out)
         );
         srv.init_asio();
 
-        srv.get_alog().set_ostream(&logstream);
+        srv.get_alog().set_ostream(logstream);
 
         srv.set_socket_init_handler(&on_init);
         srv.set_http_handler(bind(&on_http, &srv, ::_1));
@@ -470,15 +509,15 @@ void wsthreadmain(void *i_raw_out)
     } catch (...) {
         *out << "Webfort failed to start: other exception" << std::endl;
     }
-
-    try {
-        srv.run();
-    } catch (const std::exception & e) {
-        *out << "ERROR: std::exception caught: " << e.what() << std::endl;
-    } catch (lib::error_code e) {
-        *out << "ERROR: ws++ exception caught: " << e.message() << std::endl;
-    } catch (...) {
-        *out << "ERROR: Unknown exception caught:" << std::endl;
-    }
-    return;
+    loop = new tthread::thread(wsloop, &srv);
 }
+
+void WFServerImpl::stop()
+{
+    srv.stop();
+}
+
+WFServer::WFServer(DFHack::color_ostream& o) { impl = new WFServerImpl(o); }
+WFServer::~WFServer()  { delete impl; }
+void WFServer::start() { impl->start(); }
+void WFServer::stop()  { impl->stop(); }

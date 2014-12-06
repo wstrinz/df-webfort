@@ -13,8 +13,6 @@
 #include <vector>
 #include <cassert>
 
-#include "tinythread.h"
-
 #include "MemAccess.h"
 #include "PluginManager.h"
 #include "modules/MapCache.h"
@@ -37,8 +35,6 @@
 #include "df/viewscreen_movieplayerst.h"
 
 #include "server.hpp"
-
-static tthread::thread * wsthread;
 
 using namespace df::enums;
 using df::global::world;
@@ -284,12 +280,16 @@ public:
     }
 };
 
+WFServer* s_hdl;
+
 void hook()
 {
     if (enabled)
         return;
 
     enabled = true;
+
+    s_hdl->start();
     enabler->renderer = new renderhook(enabler->renderer);
     enabler->renderer->update_all();
 }
@@ -302,10 +302,12 @@ void unhook()
     enabled = false;
 
     delete enabler->renderer;
+    s_hdl->stop();
 }
 
 DFhackCExport command_result plugin_enable(color_ostream &out, bool to_enable)
 {
+    // FIXME: add hooks
     return CR_OK;
 }
 
@@ -318,10 +320,9 @@ DFhackCExport command_result plugin_init(color_ostream &out, vector <PluginComma
         out.color(COLOR_RESET);
         return CR_OK;
     }
+    s_hdl = new WFServer(out);
 
     hook();
-
-    wsthread = new tthread::thread(wsthreadmain, &out);
 
     return CR_OK;
 }
@@ -331,6 +332,7 @@ DFhackCExport command_result plugin_shutdown(color_ostream &out)
     if (enabled)
         unhook();
 
+    delete s_hdl;
     return CR_OK;
 }
 
