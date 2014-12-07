@@ -98,7 +98,7 @@ bool is_dwarf_mode()
 void deify(DFHack::color_ostream* raw_out, std::string nick)
 {
     if (is_dwarf_mode()) {
-        Core::getInstance().runCommand(*raw_out, "deify " + nick);
+        Core::getInstance().runCommand(*raw_out, "webfort/deify " + nick);
     }
 }
 

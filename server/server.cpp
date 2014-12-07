@@ -131,6 +131,28 @@ int32_t round_timer()
     }
 }
 
+#define IDLE_TIMEOUT 10
+time_t itime = 0;
+bool timed_out = true;
+void reset_idle_timer()
+{
+    itime = time(NULL);
+    timed_out = false;
+}
+
+void idle_timer()
+{
+    if (!timed_out && active_conn == null_conn) {
+        time_t now = time(NULL);
+        time_t diff = now - itime;
+        if (diff > IDLE_TIMEOUT) {
+            *out << "Quicksave triggered." << std::endl;
+            quicksave(raw_out);
+            timed_out = true;
+        }
+    }
+}
+
 void set_active(conn_hdl newc)
 {
     if (active_conn == newc) { return; }
@@ -151,7 +173,7 @@ void set_active(conn_hdl newc)
         ss << " has seized control.";
         show_announcement(ss.str());
     } else if (AUTOSAVE_WHILE_IDLE) {
-        quicksave(raw_out); // FIXME: this is way too often
+        reset_idle_timer();
     }
 
     if (!(*df::global::pause_state)) {
@@ -167,6 +189,23 @@ void set_active(conn_hdl newc)
     *out << " is now active." << std::endl;
 }
 
+int32_t get_time_left(bool* time_up = nullptr)
+{
+    int32_t time_left = -1;
+    Client* active_cl = get_client(active_conn);
+
+    if (TURNTIME != 0 && (active_conn != null_conn) && clients.size() > 1) {
+        time_t now = round_timer();
+        int played = now - active_cl->atime;
+        if (played < TURNTIME) {
+            time_left = TURNTIME - played;
+        } else if (time_up != nullptr) {
+            *time_up = true;
+        }
+    }
+    return time_left;
+}
+
 std::string str(std::string s)
 {
     return "\"" + s + "\"";
@@ -179,16 +218,8 @@ std::string status_json()
     int active_players = clients.size();
     Client* active_cl = get_client(active_conn);
     std::string current_player = active_cl->nick;
-    int32_t time_left = -1;
+    int32_t time_left = get_time_left();
     bool is_somebody_playing = active_conn != null_conn;
-
-    if (TURNTIME != 0 && is_somebody_playing && clients.size() > 1) {
-        time_t now = round_timer();
-        int played = now - active_cl->atime;
-        if (played < TURNTIME) {
-            time_left = TURNTIME - played;
-        }
-    }
 
     json << std::boolalpha << "{"
         <<  " \"active_players\": " << active_players
@@ -282,17 +313,14 @@ void tock(server* s, conn_hdl hdl)
 {
     Client* cl = get_client(hdl);
     Client* active_cl = get_client(active_conn);
-    int32_t time_left = -1;
+    bool time_up = false;
 
-    if (TURNTIME != 0 && active_conn != null_conn && clients.size() > 1) {
-        time_t now = round_timer();
-        int played = now - active_cl->atime;
-        if (played < TURNTIME) {
-            time_left = TURNTIME - played;
-        } else {
-            *out << active_cl->nick << " has run out of time." << std::endl;
-            set_active(null_conn);
-        }
+    idle_timer();
+    int32_t time_left = get_time_left(&time_up);
+
+    if (time_up) {
+        *out << active_cl->nick << " has run out of time." << std::endl;
+        set_active(null_conn);
     }
 
     unsigned char *b = buf;
