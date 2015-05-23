@@ -3,6 +3,8 @@
 # This file is a part of Web Fortress
 # (c) 2014 Kyle Mclamb <alloyed@tfwno.gf>
 
+DF_VER="40.19"
+
 if [ ! -r "$1" ]; then
 	echo "Invalid file: $1"
 	echo "Usage: $0 <Path to webfort.plug.dll>"
@@ -14,7 +16,8 @@ mkdir -v package
 mkdir -vp package/hack/plugins
 
 cp -v "$1" package/hack/plugins/
-cp -vr dist/* package/
+cp -vr dist/shared/* package/
+cp -vr dist/$DF_VER/* package/
 cp -vr static package/web
 
 cp_prefixed() {
@@ -30,7 +33,7 @@ echo ""              >> package/WF-USING.txt
 echo "## SERVER ##"  >> package/WF-USING.txt
 cat server/README.md >> package/WF-USING.txt
 
-zipname="webfort-$(git describe --tag).zip"
+zipname="webfort-$(git describe --tag)-df0.$DF_VER-win32.zip"
 
 rm -v "$zipname"
 (cd package && zip -r "../$zipname" ./*)

@@ -15,10 +15,15 @@ endif()
 set(SRC
 	webfort.cpp
 	server.cpp
+	config.cpp
 )
 # A list of headers
 set(HDRS
-	shared.h
+	webfort.hpp
+	server.hpp
+	config.hpp
+	renderer_wrap.hpp
+	input.hpp
 )
 set_source_files_properties(${HDRS} PROPERTIES HEADER_FILE_ONLY TRUE)
 
@@ -48,6 +53,7 @@ else(UNIX)
 		-D_WEBSOCKETPP_CPP11_RANDOM_DEVICE_
 		-D_WEBSOCKETPP_CPP11_MEMORY_
 		-DNOMINMAX
+		-DWIN32_LEAN_AND_MEAN
 	)
 	option(DL_DEPS "Download dependencies as windows binaries over https." ON)
 	# Download deps
@@ -86,6 +92,7 @@ include_directories(websocketpp)
 
 if (isPlugin)
 	DFHACK_PLUGIN(webfort ${SRC} LINK_LIBRARIES dfhack-tinythread ${PROJECT_LIBS})
+	INSTALL(DIRECTORY ../dist/shared/ DESTINATION .)
 else()
 	if (NOT UNIX)
 		message(FATAL_ERROR "Building webfort out-of-tree not supported on windows.")

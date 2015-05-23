@@ -5,13 +5,15 @@
  * Copyright (c) 2014 mifki, ISC license.
  */
 
-#include "shared.h"
-#include <cassert>
+#include "server.hpp"
 
+#define WF_VERSION "WebFortress-v2.0"
+#define WF_INVALID "WebFortress-invalid"
+
+#include <cassert>
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
-namespace ws  = websocketpp;
 namespace lib = websocketpp::lib;
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
@@ -21,124 +23,28 @@ typedef ws::server<ws::config::asio> server;
 
 typedef server::message_ptr message_ptr;
 
-using df::global::gps;
+static conn_hdl null_conn = std::weak_ptr<void>();
+static Client* null_client;
 
-bool INGAME_TIME = 0;
-int32_t TURNTIME = 600; // 10 minutes
-uint32_t MAX_CLIENTS = 32;
-uint16_t PORT = 1234;
-#define WF_VERSION  "WebFortress-v2.0"
-#define WF_INVALID  "WebFortress-invalid"
+static conn_hdl active_conn = null_conn;
+
+static std::ostream* out;
+static std::ostream* logstream;
+static DFHack::color_ostream* raw_out;
 
 conn_map clients;
 
-static ws::connection_hdl null_conn = std::weak_ptr<void>();
-static Client* null_client;
+#include "config.hpp"
+#include "webfort.hpp"
+#include "input.hpp"
 
-static ws::connection_hdl active_conn = null_conn;
-typedef ws::connection_hdl conn_hdl;
+#include "MemAccess.h"
+#include "Console.h"
+#include "modules/World.h"
+#include "df/global_objects.h"
+#include "df/graphic.h"
+using df::global::gps;
 
-static std::owner_less<std::weak_ptr<void>> conn_lt;
-inline bool operator==(const conn_hdl& p, const conn_hdl& q)
-{
-    return (!conn_lt(p, q) && !conn_lt(q, p));
-}
-
-inline bool operator!=(const conn_hdl& p, const conn_hdl& q)
-{
-    return conn_lt(p, q) || conn_lt(q, p);
-}
-
-static unsigned char buf[64*1024];
-
-/* FIXME: input handling is long-winded enough to get its own file. */
-#include "SDL_events.h"
-#include "SDL_keysym.h"
-extern "C"
-{
-extern int SDL_PushEvent( SDL::Event* event );
-}
-static SDL::Key mapInputCodeToSDL( const uint32_t code )
-{
-#define MAP(a, b) case a: return b;
-    switch (code)
-    {
-    // {{{ keysyms
-    MAP(96, SDL::K_KP0);
-    MAP(97, SDL::K_KP1);
-    MAP(98, SDL::K_KP2);
-    MAP(99, SDL::K_KP3);
-    MAP(100, SDL::K_KP4);
-    MAP(101, SDL::K_KP5);
-    MAP(102, SDL::K_KP6);
-    MAP(103, SDL::K_KP7);
-    MAP(104, SDL::K_KP8);
-    MAP(105, SDL::K_KP9);
-    MAP(144, SDL::K_NUMLOCK);
-
-    MAP(111, SDL::K_KP_DIVIDE);
-    MAP(106, SDL::K_KP_MULTIPLY);
-    MAP(109, SDL::K_KP_MINUS);
-    MAP(107, SDL::K_KP_PLUS);
-
-    MAP(33, SDL::K_PAGEUP);
-    MAP(34, SDL::K_PAGEDOWN);
-    MAP(35, SDL::K_END);
-    MAP(36, SDL::K_HOME);
-    MAP(46, SDL::K_DELETE);
-
-    MAP(112, SDL::K_F1);
-    MAP(113, SDL::K_F2);
-    MAP(114, SDL::K_F3);
-    MAP(115, SDL::K_F4);
-    MAP(116, SDL::K_F5);
-    MAP(117, SDL::K_F6);
-    MAP(118, SDL::K_F7);
-    MAP(119, SDL::K_F8);
-    MAP(120, SDL::K_F9);
-    MAP(121, SDL::K_F10);
-    MAP(122, SDL::K_F11);
-    MAP(123, SDL::K_F12);
-
-    MAP(37, SDL::K_LEFT);
-    MAP(39, SDL::K_RIGHT);
-    MAP(38, SDL::K_UP);
-    MAP(40, SDL::K_DOWN);
-
-    MAP(188, SDL::K_LESS);
-    MAP(190, SDL::K_GREATER);
-
-    MAP(13, SDL::K_RETURN);
-
-    //MAP(16, SDL::K_LSHIFT);
-    //MAP(17, SDL::K_LCTRL);
-    //MAP(18, SDL::K_LALT);
-
-    MAP(27, SDL::K_ESCAPE);
-#undef MAP
-    // }}}
-    }
-    if (code <= 177)
-        return (SDL::Key)code;
-    return SDL::K_UNKNOWN;
-}
-
-void simkey(int down, int mod, SDL::Key sym, int unicode)
-{
-    SDL::Event event;
-    memset(&event, 0, sizeof(event));
-
-    event.type = down ? SDL::ET_KEYDOWN : SDL::ET_KEYUP;
-    event.key.state = down ? SDL::BTN_PRESSED : SDL::BTN_RELEASED;
-    event.key.ksym.mod = (SDL::Mod)mod;
-    event.key.ksym.sym = sym;
-    event.key.ksym.unicode = unicode;
-
-    SDL_PushEvent(&event);
-}
-
-static std::ostream* out;
-static DFHack::color_ostream* raw_out;
 
 class logbuf : public std::stringbuf {
 public:
@@ -159,10 +65,11 @@ public:
             o.replace(i, 13, "[WEBFORT]");
         }
 
-        *dfout << o;
         std::cout << o;
+        *dfout << o;
 
         dfout->flush();
+        dfout->color(DFHack::COLOR_RESET);
         std::cout.flush();
         str("");
         return 0;
@@ -186,6 +93,25 @@ private:
     server* srv;
 };
 
+class logstream_t : public std::ostream {
+public:
+    logstream_t(DFHack::color_ostream* i_out)
+        : std::ostream(&m_lb), m_lb(i_out)
+    {}
+private:
+    logbuf m_lb;
+};
+
+class appstream : public std::ostream {
+public:
+    appstream(server* i_srv)
+        : std::ostream(&m_ab),  m_ab(i_srv)
+    {}
+private:
+    appbuf m_ab;
+};
+
+
 Client* get_client(conn_hdl hdl)
 {
     auto it = clients.find(hdl);
@@ -199,12 +125,33 @@ int32_t round_timer()
 {
     if (INGAME_TIME) {
         // FIXME: check if we are actually in-game
-        return World::ReadCurrentTick(); // uint32_t
+        return DFHack::World::ReadCurrentTick(); // uint32_t
     } else {
         return time(NULL); // time_t, usually int32_t
     }
 }
 
+#define IDLE_TIMEOUT 10
+time_t itime = 0;
+bool timed_out = true;
+void reset_idle_timer()
+{
+    itime = time(NULL);
+    timed_out = false;
+}
+
+void idle_timer()
+{
+    if (!timed_out && active_conn == null_conn) {
+        time_t now = time(NULL);
+        time_t diff = now - itime;
+        if (diff > IDLE_TIMEOUT) {
+            *out << "Quicksave triggered." << std::endl;
+            quicksave(raw_out);
+            timed_out = true;
+        }
+    }
+}
 
 void set_active(conn_hdl newc)
 {
@@ -225,8 +172,8 @@ void set_active(conn_hdl newc)
         }
         ss << " has seized control.";
         show_announcement(ss.str());
-    } else {
-        quicksave(raw_out);
+    } else if (AUTOSAVE_WHILE_IDLE) {
+        reset_idle_timer();
     }
 
     if (!(*df::global::pause_state)) {
@@ -242,6 +189,23 @@ void set_active(conn_hdl newc)
     *out << " is now active." << std::endl;
 }
 
+int32_t get_time_left(bool* time_up = nullptr)
+{
+    int32_t time_left = -1;
+    Client* active_cl = get_client(active_conn);
+
+    if (TURNTIME != 0 && (active_conn != null_conn) && clients.size() > 1) {
+        time_t now = round_timer();
+        int played = now - active_cl->atime;
+        if (played < TURNTIME) {
+            time_left = TURNTIME - played;
+        } else if (time_up != nullptr) {
+            *time_up = true;
+        }
+    }
+    return time_left;
+}
+
 std::string str(std::string s)
 {
     return "\"" + s + "\"";
@@ -254,16 +218,8 @@ std::string status_json()
     int active_players = clients.size();
     Client* active_cl = get_client(active_conn);
     std::string current_player = active_cl->nick;
-    int32_t time_left = -1;
+    int32_t time_left = get_time_left();
     bool is_somebody_playing = active_conn != null_conn;
-
-    if (TURNTIME != 0 && is_somebody_playing && clients.size() > 1) {
-        time_t now = round_timer();
-        int played = now - active_cl->atime;
-        if (played < TURNTIME) {
-            time_left = TURNTIME - played;
-        }
-    }
 
     json << std::boolalpha << "{"
         <<  " \"active_players\": " << active_players
@@ -271,6 +227,8 @@ std::string status_json()
         << ", \"time_left\": " << time_left
         << ", \"is_somebody_playing\": " << is_somebody_playing
         << ", \"using_ingame_time\": " << INGAME_TIME
+        << ", \"dfhack_version\": " << str(DFHACK_VERSION)
+        << ", \"webfort_version\": " << str(WF_VERSION)
         << " }\n";
 
     return json.str();
@@ -283,7 +241,8 @@ void on_http(server* s, conn_hdl hdl)
     std::string route = con->get_resource();
     if (route == STATUS_ROUTE) {
         con->set_status(websocketpp::http::status_code::ok);
-        con->replace_header("Content-Type", "text/html; charset=utf-8");
+        con->replace_header("Content-Type", "application/json");
+        con->replace_header("Access-Control-Allow-Origin", "*");
         con->set_body(status_json());
     }
 }
@@ -315,7 +274,9 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     auto raw_conn = s->get_con_from_hdl(hdl);
-    std::string nick = raw_conn->get_resource().substr(1); // remove leading '/'
+    auto path = split(raw_conn->get_resource().substr(1).c_str(), '/');
+    std::string nick = path[0];
+    std::string user_secret = (path.size() > 1) ? path[1] : "";
 
     if (nick == "__NOBODY") {
         s->close(hdl, 4002, "Invalid nickname.");
@@ -323,6 +284,8 @@ void on_open(server* s, conn_hdl hdl)
     }
 
     Client* cl = new Client;
+    cl->is_admin = (user_secret == SECRET);
+
     cl->addr = raw_conn->get_remote_endpoint();
     cl->nick = nick;
     cl->atime = round_timer();
@@ -345,21 +308,19 @@ void on_close(server* s, conn_hdl c)
     clients.erase(c);
 }
 
+static unsigned char buf[64*1024];
 void tock(server* s, conn_hdl hdl)
 {
     Client* cl = get_client(hdl);
     Client* active_cl = get_client(active_conn);
-    int32_t time_left = -1;
+    bool time_up = false;
 
-    if (TURNTIME != 0 && active_conn != null_conn && clients.size() > 1) {
-        time_t now = round_timer();
-        int played = now - active_cl->atime;
-        if (played < TURNTIME) {
-            time_left = TURNTIME - played;
-        } else {
-            *out << active_cl->nick << " has run out of time." << std::endl;
-            set_active(null_conn);
-        }
+    idle_timer();
+    int32_t time_left = get_time_left(&time_up);
+
+    if (time_up) {
+        *out << active_cl->nick << " has run out of time." << std::endl;
+        set_active(null_conn);
     }
 
     unsigned char *b = buf;
@@ -419,7 +380,6 @@ void tock(server* s, conn_hdl hdl)
     s->send(hdl, (const void*) buf, (size_t)(b-buf), ws::frame::opcode::binary);
 }
 
-
 void on_message(server* s, conn_hdl hdl, message_ptr msg)
 {
     auto str = msg->get_payload();
@@ -434,8 +394,11 @@ void on_message(server* s, conn_hdl hdl, message_ptr msg)
         }
     } else if (mdata[0] == 111 && msz == 4) { // KeyEvent
         if (hdl == active_conn) {
+            Client* cl = get_client(hdl);
             SDL::Key k = mdata[2] ? (SDL::Key)mdata[2] : mapInputCodeToSDL(mdata[1]);
-            bool is_safe_key = (k != SDL::K_ESCAPE || is_safe_to_escape());
+            bool is_safe_key = cl->is_admin ||
+                k != SDL::K_ESCAPE ||
+                is_safe_to_escape();
             if (k != SDL::K_UNKNOWN && is_safe_key) {
                 int jsmods = mdata[3];
                 int sdlmods = 0;
@@ -490,34 +453,50 @@ void on_init(conn_hdl hdl, boost::asio::ip::tcp::socket & s)
     s.set_option(boost::asio::ip::tcp::no_delay(true));
 }
 
-void wsthreadmain(void *i_raw_out)
+void wsloop(void *a_srv)
+{
+    try {
+        ((server*)a_srv)->run();
+    } catch (const std::exception & e) {
+        *out << "ERROR: std::exception caught: " << e.what() << std::endl;
+    } catch (lib::error_code e) {
+        *out << "ERROR: ws++ exception caught: " << e.message() << std::endl;
+    } catch (...) {
+        *out << "ERROR: Unknown exception caught:" << std::endl;
+    }
+    return;
+}
+
+struct WFServerImpl {
+    tthread::thread* loop;
+    server srv;
+    WFServerImpl(DFHack::color_ostream&);
+    ~WFServerImpl();
+    void start();
+    void stop();
+};
+
+WFServerImpl::WFServerImpl(DFHack::color_ostream& i_raw_out)
 {
     null_client = new Client;
     null_client->nick = "__NOBODY";
 
-    raw_out = (DFHack::color_ostream*) i_raw_out;
-    logbuf lb((DFHack::color_ostream*) i_raw_out);
-    std::ostream logstream(&lb);
+    raw_out = &i_raw_out;
+    logstream = new logstream_t(raw_out);
+    out = new appstream(&srv);
+}
 
-    server srv;
+WFServerImpl::~WFServerImpl()
+{
+    delete null_client;
+    delete logstream;
+    delete out;
+}
 
-    char* tmp;
-
+void WFServerImpl::start()
+{
+    load_config();
     try {
-        // FIXME: bounds checking.
-        if ((tmp = getenv("WF_PORT"))) {
-            PORT = (uint16_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_TURNTIME"))) {
-            TURNTIME = (int64_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_MAX_CLIENTS"))) {
-            MAX_CLIENTS = (uint32_t)std::stol(tmp);
-        }
-        if ((tmp = getenv("WF_INGAME_TIME"))) {
-            INGAME_TIME = std::stol(tmp) != 0;
-        }
-
         srv.clear_access_channels(ws::log::alevel::all);
         srv.set_access_channels(
                 ws::log::alevel::connect    |
@@ -532,10 +511,7 @@ void wsthreadmain(void *i_raw_out)
         );
         srv.init_asio();
 
-        srv.get_alog().set_ostream(&logstream);
-        appbuf abuf(&srv);
-        std::ostream astream(&abuf);
-        out = &astream;
+        srv.get_alog().set_ostream(logstream);
 
         srv.set_socket_init_handler(&on_init);
         srv.set_http_handler(bind(&on_http, &srv, ::_1));
@@ -547,15 +523,13 @@ void wsthreadmain(void *i_raw_out)
         lib::error_code ec;
         srv.listen(PORT, ec);
         if (ec) {
-            *out << "Unable to start Webfort on port " << PORT
+            *out << "ERROR: Unable to start Webfort on port " << PORT
                   << ", is it being used somehere else?" << std::endl;
             return;
         }
 
         srv.start_accept();
-        // Start the ASIO io_service run loop
         *out << "Web Fortress started on port " << PORT << std::endl;
-        srv.run();
     } catch (const std::exception & e) {
         *out << "Webfort failed to start: " << e.what() << std::endl;
     } catch (lib::error_code e) {
@@ -563,5 +537,15 @@ void wsthreadmain(void *i_raw_out)
     } catch (...) {
         *out << "Webfort failed to start: other exception" << std::endl;
     }
-    return;
+    loop = new tthread::thread(wsloop, &srv);
 }
+
+void WFServerImpl::stop()
+{
+    srv.stop();
+}
+
+WFServer::WFServer(DFHack::color_ostream& o) { impl = new WFServerImpl(o); }
+WFServer::~WFServer()  { delete impl; }
+void WFServer::start() { impl->start(); }
+void WFServer::stop()  { impl->stop(); }
