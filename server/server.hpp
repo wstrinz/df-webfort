@@ -12,6 +12,7 @@
 #include <map>
 #include <string>
 #include <websocketpp/server.hpp>
+#include <DFHackVersion.h>
 
 typedef struct {
     std::string addr;

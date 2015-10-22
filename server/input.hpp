@@ -1,10 +1,11 @@
 /* FIXME: input handling is long-winded enough to get its own file. */
 #include "SDL_events.h"
 #include "SDL_keysym.h"
-extern "C"
-{
-extern int SDL_PushEvent( SDL::Event* event );
-}
+#include "Hooks.h"
+//extern "C"
+//{
+  //int SDL_PushEvent( SDL::Event* event );
+//}
 static SDL::Key mapInputCodeToSDL( const uint32_t code )
 {
 #define MAP(a, b) case a: return b;

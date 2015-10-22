@@ -70,6 +70,7 @@ else(UNIX)
 	set(CMAKE_PREFIX_PATH ${SDL_DIR})
 	set(BOOST_ROOT ${WFDIR}/boost)
 	link_directories(${BOOST_ROOT}/lib) # Boost doesn't find everything
+	set(BOOST_LIBRARYDIR ${BOOST_ROOT}/lib) # Boost doesn't find everything
 endif(UNIX)
 
 # SDL Headers

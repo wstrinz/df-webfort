@@ -26,15 +26,15 @@ var colors = [
 	255, 250, 232
 ];
 
-var MAX_FPS = 20;
+var MAX_FPS = 20
 
-var host = params.host;
-var port = params.port;
-var tileSet = params.tiles;
-var textSet = params.text;
-var colorscheme = params.colors;
-var nick = params.nick;
-var secret = params.secret;
+var host = params.host
+var port = params.port
+var tileSet = params.tiles
+var textSet = params.text
+var colorscheme = params.colors
+var nick = params.nick
+var secret = params.secret
 
 var wsUri = 'ws://' + host + ':' + port +
 	'/' + encodeURIComponent(nick) +
